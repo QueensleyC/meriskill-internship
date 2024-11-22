@@ -1,0 +1,403 @@
+---
+jupyter: python3
+---
+
+![](diabetes.jpg)
+
+# Introduction
+
+In this notebook, we aim to develop a predictive model for diagnosing diabetes in female patients using a dataset that includes various health metrics. The dataset captures key features such as the number of pregnancies, blood pressure, glucose level, and insulin levels. By leveraging machine learning techniques, this analysis seeks to predict whether a female patient is likely to have diabetes based on these health indicators.
+
+Throughout this analysis, we will go through essential steps, including data preprocessing, exploratory data analysis (EDA), model building, and evaluation. The goal is to identify the most effective machine learning model to predict the occurrence of diabetes with a high degree of accuracy, providing insights that could potentially assist healthcare professionals in early diagnosis and intervention.
+
+The project explores several algorithms, including logistic regression, random forest, and gradient boosting, and evaluates their performance using key metrics like accuracy, precision, recall, and F1-score. Ultimately, this model will be deployed for practical use, offering a valuable tool for healthcare applications.
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+```
+
+```{python}
+df = pd.read_csv('diabetes.csv')
+df.head()
+```
+
+```{python}
+df.info()
+```
+
+```{python}
+df.drop(axis = 1, columns='Id', inplace= True)
+df.head()
+```
+
+```{python}
+df.describe()
+```
+
+It can be observed that blood pressure, skin thickness and BMI have minimum values as zero which shouldn't be. The blood pressure, skin thickness, glucose level, insulin and BMI of an individual caanot be zero. So, proceed to replace zeroes with an appropriate value - median or mode.
+
+# Plots
+
+```{python}
+df.hist(figsize=(20,20));
+```
+
+```{python}
+df.boxplot(figsize=(20,20));
+```
+
+### **Observations:**
+- `Glucose` has 5 zeros (Nan). Since the outliers make up for <1% of the column, they'll be filled with the **_mean_** of the column.
+- Since `BloodPressure` has some outliers, the zeros will be replaced with the **_median_** value of the column.
+- For `SkinThickness`, it can be seen from the chart that this column has one outlier. Since it is only one outlier, that row will be dropped and the zeros in the column will be filled with the **_mean_** of the column.
+- All zeros in the column `Insulin` will be replaced with the **_median_** value of the column since it contains so many outliers.
+- Zeros in the `BMI` column will also be filled with the **_median_** value of that column.
+
+Since all the columns have some outliers, proceed to fill all zeroes with the median values for all columns except `Pregnancies` and `Outcome` column
+
+# Data Cleaning
+
+```{python}
+# Find the only outlier in `SkinThickness` column
+df[df['SkinThickness'] > 90]
+```
+
+```{python}
+# Drop the only outlier in `SkinThickness` column
+df.drop([579],inplace = True)
+```
+
+```{python}
+# This method 
+def replace_zeros_median(df, columns):
+    for col in columns:
+        median = df[col].median()
+        df[col].replace(0, median,inplace=True)
+    return df
+```
+
+```{python}
+def replace_zeros_mean(df, columns):
+    for col in columns:
+        mean = df[col].mean()
+        df[col].replace(0, mean,inplace=True)
+    return df
+```
+
+```{python}
+df = replace_zeros_median(df, ['BMI','BloodPressure', 'Insulin'])
+df = replace_zeros_mean(df, ['SkinThickness', 'Glucose'])
+```
+
+# Build Model
+
+```{python}
+X = df.drop('Outcome', axis = 1)
+y = df['Outcome']
+```
+
+```{python}
+# train-test split
+X_train,X_test, y_train, y_test = train_test_split(X, y, test_size= 0.2, random_state= 42)
+
+print(X_train.shape)
+print(X_test.shape)
+print(y_train.shape)
+print(y_test.shape)
+```
+
+```{python}
+# train-validation split
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state= 42)
+
+print(X_train.shape)
+print(X_val.shape)
+print(y_train.shape)
+print(y_val.shape)
+```
+
+### Model 1 (DecisionTreeClassifier)
+
+```{python}
+depth_hyperparams = range(1,10,1)
+# Create empty lists for training and validation accuracy scores
+training_acc = []
+validation_acc = []
+
+for d in depth_hyperparams:
+    
+    # Create model with `max_depth` of `d`
+    test_model_dtc = DecisionTreeClassifier(random_state= 42, max_depth = d)
+    
+    # Fit model to training data
+    test_model_dtc.fit(X_train, y_train)
+    
+    # Calculate training accuracy score and append to `training_acc`
+    training_acc.append(test_model_dtc.score(X_train, y_train))
+    
+    # Calculate validation accuracy score and append to `training_acc`
+    validation_acc.append(accuracy_score(y_val, test_model_dtc.predict(X_val)))
+    
+print("Training Accuracy Scores:", training_acc[:3])
+print("Validation Accuracy Scores:", validation_acc[:3])
+
+# Plot `depth_hyperparams`, `training_acc`
+plt.plot(depth_hyperparams, training_acc, label = "Training")
+plt.plot(depth_hyperparams, validation_acc, label = "Validation")
+plt.xlabel("Max Depth")
+plt.ylabel("Accuracy Score")
+plt.legend();
+```
+
+From the graph, the accuracy score of the validation set stopped improving after a max_depth of 2. Hence, a max depth of 2 will be used for the DecisionTreeClassifier.
+
+```{python}
+# Create model
+model_dtc = DecisionTreeClassifier(max_depth= 2, random_state= 42)
+
+# Fit model
+model_dtc.fit(X_train, y_train)
+
+# Calculate accuracy score
+print(f'Accuracy Score DTC: {round(accuracy_score(y_test, model_dtc.predict(X_test)),4)}')
+```
+
+### Model 2 (RandomForestClassifier)
+
+```{python}
+depth_hyperparams = range(1,10,1)
+# Create empty lists for training and validation accuracy scores
+training_acc = []
+validation_acc = []
+
+for d in depth_hyperparams:
+    
+    # Create model with `max_depth` of `d`
+    test_model_rfc = RandomForestClassifier(random_state= 42, max_depth = d)
+    
+    # Fit model to training data
+    test_model_rfc.fit(X_train, y_train)
+    
+    # Calculate training accuracy score and append to `training_acc`
+    training_acc.append(test_model_rfc.score(X_train, y_train))
+    
+    # Calculate validation accuracy score and append to `training_acc`
+    validation_acc.append(accuracy_score(y_val, test_model_rfc.predict(X_val)))
+    
+print("Training Accuracy Scores:", training_acc[:3])
+print("Validation Accuracy Scores:", validation_acc[:3])
+
+# Plot `depth_hyperparams`, `training_acc`
+plt.plot(depth_hyperparams, training_acc, label = "Training")
+plt.plot(depth_hyperparams, validation_acc, label = "Validation")
+plt.xlabel("Max Depth")
+plt.ylabel("Accuracy Score")
+plt.legend();
+```
+
+From the graph, the accuracy score of the validation set stopped improving after a max_depth of 2. Hence, a max depth of 2 will be used for the RandomForestClassifier.
+
+```{python}
+# Create model
+model_rfc = RandomForestClassifier(max_depth=4, random_state= 42, n_jobs=-1)
+
+# Fit model
+model_rfc.fit(X_train, y_train)
+
+# Calculate accuracy score
+print(f'Accuracy Score RFC: {round(accuracy_score(y_test, model_rfc.predict(X_test)),4)}')
+```
+
+### Model 3 (GradientBoostingClassifier)
+
+```{python}
+depth_hyperparams = range(1,10,1)
+# Create empty lists for training and validation accuracy scores
+training_acc = []
+validation_acc = []
+
+for d in depth_hyperparams:
+    
+    # Create model with `max_depth` of `d`
+    test_model_gbc = GradientBoostingClassifier(random_state= 42, max_depth = d)
+    
+    # Fit model to training data
+    test_model_gbc.fit(X_train, y_train)
+    
+    # Calculate training accuracy score and append to `training_acc`
+    training_acc.append(test_model_gbc.score(X_train, y_train))
+    
+    # Calculate validation accuracy score and append to `training_acc`
+    validation_acc.append(accuracy_score(y_val, test_model_gbc.predict(X_val)))
+    
+print("Training Accuracy Scores:", training_acc[:3])
+print("Validation Accuracy Scores:", validation_acc[:3])
+
+# Plot `depth_hyperparams`, `training_acc`
+plt.plot(depth_hyperparams, training_acc, label = "Training")
+plt.plot(depth_hyperparams, validation_acc, label = "Validation")
+plt.xlabel("Max Depth")
+plt.ylabel("Accuracy Score")
+plt.legend();
+```
+
+From the graph, the accuracy score of the validation set stopped improving after a max_depth of 1. Therefore, a max depth of 1 will be used for the GradientBoostingClassifier.
+
+```{python}
+#| scrolled: true
+# Create model
+model_gbc = GradientBoostingClassifier(random_state=42,max_depth=1)
+
+# Fit model
+model_gbc.fit(X_train, y_train)
+
+# Calculate accuracy score
+print(f'Accuracy Score GBC: {round(accuracy_score(y_test, model_gbc.predict(X_test)),4)}')
+```
+
+
+
+
+| DecisionTreeClassifier | RandomForestClassifier | GradientBoostingClassifier |
+| ---------------------- | ---------------------- | -------------------------- |
+| 0.7857 | 0.8052 |0.7857|
+
+---
+
+## Confusion Matrices
+
+```{python}
+# DTC
+cm_DTC = confusion_matrix(y_test, model_dtc.predict(X_test))
+
+sns.heatmap(
+    cm_DTC,
+    annot = True,
+    fmt = 'g',
+)
+plt.ylabel('Actual', fontsize = 13)
+plt.xlabel('Prediction', fontsize = 13)
+plt.title('DTC Confusion Matrix', fontsize = 17);
+```
+
+```{python}
+# RFC
+cm_RFC = confusion_matrix(y_test, model_rfc.predict(X_test))
+
+sns.heatmap(
+    cm_RFC,
+    annot = True,
+    fmt = 'g',
+)
+plt.ylabel('Actual', fontsize = 13)
+plt.xlabel('Prediction', fontsize = 13)
+plt.title('RFC Confusion Matrix', fontsize = 17);
+```
+
+```{python}
+# GBC
+cm_GBC = confusion_matrix(y_test, model_gbc.predict(X_test))
+
+sns.heatmap(
+    cm_GBC,
+    annot = True,
+    fmt = 'g',
+)
+plt.ylabel('Actual', fontsize = 13)
+plt.xlabel('Prediction', fontsize = 13)
+plt.title('GBC Confusion Matrix', fontsize = 17);
+```
+
+### Observations:
+- The `DecisionTreeClassifier` yields the highest number of false negatives which is potentially dangerous in the medical field. 
+- The `RandomForestClassifier` and the `GradientBoostingClassifier` both have relatively lower false positives.
+- The `RandomForestClassifier` is the best performing model not only by accuracy score but also by the fact that it minimizes false positives and false negatives the most among the 3 models.
+
+## Feature Importances
+
+```{python}
+# Feature importance DecisionTreeClassifier
+fig, ax = plt.subplots(figsize = (8, 2))
+plt.barh(model_dtc.feature_names_in_, model_dtc.feature_importances_, height = 0.4, figure = fig)
+plt.ylabel("Features")
+plt.xlabel("Gini Importance")
+plt.title("Feature Importance");
+```
+
+```{python}
+# Feature importance RandomForestClassifier
+fig, ax = plt.subplots(figsize = (8, 2))
+plt.barh(model_rfc.feature_names_in_, model_rfc.feature_importances_, height = 0.4, figure = fig)
+plt.ylabel("Features")
+plt.xlabel("Gini Importance")
+plt.title("Feature Importance");
+```
+
+```{python}
+# Feature importance GradientBoostingClassifier
+fig, ax = plt.subplots(figsize = (8, 2))
+plt.barh(model_gbc.feature_names_in_, model_gbc.feature_importances_, height = 0.4, figure = fig)
+plt.ylabel("Features")
+plt.xlabel("Gini Importance")
+plt.title("Feature Importance");
+```
+
+# Further Exploration
+
+Considering that the DecisionTreeClassifier model only made use of `Age`, `BMI` and `Glucose`, try building the model using only those 3 variables.
+
+```{python}
+X_few = X[['Age','BMI','Glucose']]
+X_few.head()
+```
+
+```{python}
+y_few = y.copy()
+y_few.head()
+```
+
+```{python}
+X_few_train, X_few_test, y_few_train, y_few_test = train_test_split(X_few, y_few, test_size=0.2, random_state= 42)
+
+print(X_few_train.shape)
+print(X_few_test.shape)
+print(y_few_train.shape)
+print(y_few_test.shape)
+```
+
+```{python}
+model_dtc_2 = DecisionTreeClassifier(max_depth=2)
+
+model_dtc_2.fit(X_few_train,y_few_train)
+```
+
+```{python}
+print(f'Accuracy Score DTC_2: {round(accuracy_score(y_few_test,model_dtc_2.predict(X_few_test)),4)}')
+```
+
+```{python}
+# DTC
+cm_DTC_2 = confusion_matrix(y_few_test,model_dtc_2.predict(X_few_test))
+
+sns.heatmap(
+    cm_DTC_2,
+    annot = True,
+    fmt = 'g',
+)
+plt.ylabel('Actual', fontsize = 13)
+plt.xlabel('Prediction', fontsize = 13)
+plt.title('DTC_2 Confusion Matrix', fontsize = 17);
+```
+
+### Conclusion:
+- Here, the `DecisionTreeClassifier` outperforms both `RandomForestClassifier` and `GradientBoostingClassifier` with an accuracy score of `0.8182` and a decreased false positives and negatives when compared to the aforementioned models
+
